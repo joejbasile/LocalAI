@@ -268,6 +268,19 @@ def chat():
         }]
     })
 
+@app.route("/v1/models", methods=["GET"])
+def get_models():
+    return jsonify({
+        "object": "list",
+        "data": [
+            {
+                "id": "hermes-agent", # This is the name you'll see in the Open WebUI dropdown
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": "orchestrator"
+            }
+        ]
+    })
 
 @app.route("/health")
 def health():

@@ -113,7 +113,7 @@ services:
       - "3000:8080"
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
-      - OPENAI_API_BASE_URL=http://orchestrator:5000
+      - OPENAI_API_BASE_URL=http://orchestrator:5000/v1
       - OPENAI_API_KEY=hermes_secret_123
       # Disable built-in search (Hermes will handle logic)
       - ENABLE_RAG_WEB_SEARCH=False
