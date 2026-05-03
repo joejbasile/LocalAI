@@ -1,0 +1,28 @@
+FROM python:3.11-slim
+
+# 1. Install system dependencies
+# We keep git for the pip install and curl for potential healthchecks
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# 2. Install Hermes Agent directly from the repository
+RUN pip install --no-cache-dir "git+https://github.com/NousResearch/hermes-agent.git"
+
+# 3. Set up the working environment
+# We don't create the config file here anymore because the 
+# Compose 'command' will handle it at runtime inside the volume.
+WORKDIR /opt/data
+
+COPY gateway.sh /usr/local/bin/gateway.sh
+RUN chmod +x /usr/local/bin/gateway.sh
+
+# 4. Standard environment variables
+ENV PYTHONUNBUFFERED=1
+
+# 5. Define the entrypoint
+# We use 'gateway.sh' as the entrypoint so that the 'gateway run' 
+# command passed by Compose is executed by this binary.
+ENTRYPOINT ["/usr/local/bin/gateway.sh"]
