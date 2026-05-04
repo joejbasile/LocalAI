@@ -2,22 +2,32 @@ import os
 import requests
 import time
 import random
+import logging
 from flask import Flask, request, jsonify
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from rake_nltk import Rake
 from urllib.parse import urlparse
 from collections import defaultdict
 import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 app = Flask(__name__)
 
-# --- CONFIG ---
-SEARXNG_URL = "http://searxng:8080/search"
-HERMES_URL = "http://hermes-gateway:8642/v1/chat/completions"
-API_KEY = "hermes_secret_123"
+# ----------------------------
+# LOGGING
+# ----------------------------
+logging.basicConfig(level=logging.INFO)
+
+# ----------------------------
+# CONFIG
+# ----------------------------
+SEARXNG_URL = os.getenv("SEARXNG_URL", "http://searxng:8080/search")
+HERMES_URL = os.getenv("HERMES_URL", "http://hermes-gateway:8642/v1/chat/completions")
+API_KEY = os.getenv("HERMES_API_KEY", "hermes_secret_123")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROMPT_PATH = os.path.join(BASE_DIR, "/hermes-data/agent_prompt.md")
+PROMPT_PATH = os.path.join(BASE_DIR, "hermes-data/agent_prompt.md")
 
 BASE_CATEGORIES = [
     ("journalists", "investigation report"),
@@ -32,16 +42,6 @@ EXPERIENCE_CATEGORIES = [
     ("social", "twitter opinion")
 ]
 
-CATEGORY_WEIGHT = {
-    "journalists": 1.0,
-    "independent": 0.9,
-    "news": 0.8,
-    "general": 0.7,
-    "youtube": 0.85,
-    "reddit": 0.8,
-    "social": 0.7,
-}
-
 TRUSTED_DOMAINS = {
     "reuters.com": 1.0,
     "apnews.com": 1.0,
@@ -50,115 +50,164 @@ TRUSTED_DOMAINS = {
     "science.org": 1.0,
 }
 
-# --- PROMPT ---
+# ----------------------------
+# SYSTEM PROMPT
+# ----------------------------
 SYSTEM_PROMPT = """
 You are an evidence-based assistant.
 
-Follow the provided context strictly.
-
-Modes:
-- FACTUAL: Use verified claims with citations.
-- SENTIMENT: Summarize user opinions and experiences.
-
 Rules:
-- Do not hallucinate.
-- Use only provided context.
-- In sentiment mode, say "Users report..." instead of stating facts.
-- Always respond in English.
+- Use provided context as primary evidence
+- You may use general knowledge when evidence is weak
+- Clearly indicate uncertainty when needed
+- Never fabricate facts
+- Respond in English only
 """
 
-# --- INTENT CLASSIFIER ---
-
-def classify_intent(query):
+# ----------------------------
+# INTENT CLASSIFIER (FIXED)
+# ----------------------------
+def classify_intent(query: str) -> str:
     q = query.lower()
 
-    if any(x in q for x in ["how", "steps", "guide"]):
-        return "INSTRUCTIONAL"
-    if any(x in q for x in ["vs", "compare", "better"]):
+    comparison = ["vs", "versus", "compare", "difference"]
+    instruction = ["how", "steps", "guide", "tutorial"]
+    opinion = ["should", "worth", "good", "bad", "best", "better", "think", "recommend"]
+
+    if any(x in q for x in comparison):
         return "COMPARISON"
-    if len(q.split()) < 6:
+    if any(x in q for x in instruction):
+        return "INSTRUCTIONAL"
+    if any(x in q for x in opinion):
+        return "OPINION"
+    if len(q.split()) < 4 and "?" not in q:
         return "VAGUE"
+
     return "FACTUAL"
 
-# --- HELPERS ---
-
-def extract_search_keywords(text):
-    if len(text.split()) < 30:
+# ----------------------------
+# QUERY ENHANCEMENT
+# ----------------------------
+def extract_search_keywords(text: str) -> str:
+    try:
+        r = Rake()
+        r.extract_keywords_from_text(text[:800])
+        keywords = " ".join(r.get_ranked_phrases()[:5])
+        return f"{text} {keywords}".strip()
+    except:
         return text
-    r = Rake()
-    r.extract_keywords_from_text(text[:800])
-    return " ".join(r.get_ranked_phrases()[:6])
 
-
-def get_domain_score(url):
+# ----------------------------
+# DOMAIN SCORING
+# ----------------------------
+def get_domain_score(url: str) -> float:
     domain = urlparse(url).netloc.lower()
     for d, score in TRUSTED_DOMAINS.items():
         if d in domain:
-            return score
+            return score * 1.5
     return 0.6
 
-
-def normalize_results(results, category):
-    cleaned = []
-    for r in results or []:
-        url = r.get("url")
-        content = (r.get("content") or "").strip()
-        if not url or len(content) < 50:
-            continue
-
-        cleaned.append({
-            "title": r.get("title", ""),
-            "url": url,
-            "content": content[:1200],
-            "category": category
-        })
-    return cleaned
-
-
+# ----------------------------
+# SEARCH
+# ----------------------------
 def search_category(query, category, modifier):
-    time.sleep(random.uniform(0.3, 1.0))
+    time.sleep(random.uniform(0.2, 0.5))
     try:
         res = requests.get(
             SEARXNG_URL,
             params={"q": f"{query} {modifier}", "format": "json"},
             timeout=10
         )
-        return normalize_results(res.json().get("results"), category)
-    except:
+        return res.json().get("results", [])
+    except Exception as e:
+        logging.warning(f"Search error: {e}")
         return []
 
-# --- CLAIM PIPELINE (FACTUAL MODE) ---
+# ----------------------------
+# CLEAN + DEDUP RESULTS
+# ----------------------------
+def normalize_results(results):
+    seen = set()
+    cleaned = []
 
+    for r in results:
+        url = r.get("url")
+        content = (r.get("content") or "").strip()
+
+        if not url or url in seen or len(content) < 60:
+            continue
+
+        seen.add(url)
+
+        cleaned.append({
+            "url": url,
+            "content": content[:1200],
+            "score": get_domain_score(url)
+        })
+
+    return cleaned
+
+# ----------------------------
+# CLAIM EXTRACTION
+# ----------------------------
 def extract_claims(text):
     sentences = re.split(r'(?<=[.!?]) +', text)
-    return [s for s in sentences if len(s.split()) > 8]
+    return [s.strip() for s in sentences if len(s.split()) > 8]
 
-
-def normalize_claim(c):
-    return re.sub(r'[^a-z0-9 ]', '', c.lower())[:240]
-
-
+# ----------------------------
+# SEMANTIC CLUSTERING (FIXED CORE)
+# ----------------------------
 def cluster_claims(results):
-    clusters = defaultdict(list)
+    texts = []
+    mapping = []
 
     for r in results:
         for c in extract_claims(r["content"]):
-            key = normalize_claim(c)
+            texts.append(c)
+            mapping.append((c, r["url"], r["score"]))
+
+    if len(texts) < 2:
+        return {}
+
+    vectorizer = TfidfVectorizer().fit_transform(texts)
+    sim_matrix = cosine_similarity(vectorizer)
+
+    clusters = defaultdict(list)
+    used = set()
+
+    for i in range(len(texts)):
+        if i in used:
+            continue
+
+        cluster = []
+        for j in range(len(texts)):
+            if sim_matrix[i][j] > 0.75:
+                cluster.append(j)
+                used.add(j)
+
+        key = texts[i][:80].lower()
+
+        for idx in cluster:
+            c, url, score = mapping[idx]
             clusters[key].append({
                 "claim": c,
-                "source": r["url"]
+                "source": url,
+                "score": score
             })
 
     return clusters
 
-
-def verify_claims(clusters, min_sources=2):
+# ----------------------------
+# VERIFICATION (FIXED + SOFTENED)
+# ----------------------------
+def verify_claims(clusters):
     verified = []
 
     for items in clusters.values():
         sources = list({i["source"] for i in items})
+        score = sum(i["score"] for i in items) / max(len(items), 1)
 
-        if len(sources) >= min_sources:
+        if len(sources) >= 2 or score > 0.9:
             verified.append({
                 "claim": items[0]["claim"],
                 "sources": sources[:3]
@@ -166,8 +215,21 @@ def verify_claims(clusters, min_sources=2):
 
     return verified
 
-# --- CONTEXT BUILDERS ---
+# ----------------------------
+# FALLBACK (IMPORTANT FIX)
+# ----------------------------
+def build_best_effort(results, query):
+    top = sorted(results, key=lambda x: x["score"], reverse=True)[:5]
 
+    text = f"Best available information for: {query}\n\n"
+    for i, r in enumerate(top, 1):
+        text += f"{i}. {r['content']}\nSource: {r['url']}\n\n"
+
+    return text
+
+# ----------------------------
+# CONTEXT BUILDERS
+# ----------------------------
 def build_factual_context(query, claims):
     context = f"QUERY: {query}\n\nVERIFIED CLAIMS:\n\n"
 
@@ -179,17 +241,19 @@ def build_factual_context(query, claims):
 
     return context
 
-
 def build_sentiment_context(query, results):
-    context = f"QUERY: {query}\n\nUSER SENTIMENT & EXPERIENCES:\n\n"
-    MAX_RESULTS = 5
-    for i, r in enumerate(results[:MAX_RESULTS], 1):
+    results = sorted(results, key=lambda x: x["score"], reverse=True)
+
+    context = f"QUERY: {query}\n\nUSER EXPERIENCES:\n\n"
+
+    for i, r in enumerate(results[:5], 1):
         context += f"{i}. {r['content']}\nSource: {r['url']}\n\n"
 
     return context
 
-# --- ROUTE ---
-
+# ----------------------------
+# ROUTE
+# ----------------------------
 @app.route("/v1/chat/completions", methods=["POST"])
 def chat():
     data = request.get_json(force=True, silent=True) or {}
@@ -200,65 +264,82 @@ def chat():
 
     user_query = messages[-1]["content"]
     intent = classify_intent(user_query)
-    if intent == "VAGUE":
-        search_q = user_query  # 🔥 no keyword extraction
-    else:
-        search_q = extract_search_keywords(user_query)
 
-    # --- SELECT MODE ---
-    if intent == "VAGUE":
-        mode = "SENTIMENT"
-        categories = BASE_CATEGORIES + EXPERIENCE_CATEGORIES
-    else:
-        mode = "FACTUAL"
-        categories = BASE_CATEGORIES
+    search_q = extract_search_keywords(user_query)
 
-    # --- SEARCH ---
-    results = []
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    mode = "SENTIMENT" if intent in ["VAGUE", "OPINION"] else "FACTUAL"
+
+    categories = BASE_CATEGORIES + EXPERIENCE_CATEGORIES if mode == "SENTIMENT" else BASE_CATEGORIES
+
+    # ----------------------------
+    # SEARCH
+    # ----------------------------
+    raw_results = []
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [
-            executor.submit(search_category, search_q, cat, mod)
-            for cat, mod in categories
+            executor.submit(search_category, search_q, c, m)
+            for c, m in categories
         ]
         for f in as_completed(futures):
-            results.extend(f.result())
+            raw_results.extend(f.result())
 
-    # --- MODE EXECUTION ---
+    results = normalize_results(raw_results)
 
+    if not results:
+        return jsonify({
+            "choices": [{
+                "message": {
+                    "content": "No relevant sources were found."
+                }
+            }]
+        })
+
+    # ----------------------------
+    # MODE HANDLING
+    # ----------------------------
     if mode == "SENTIMENT":
         context = build_sentiment_context(user_query, results)
 
     else:
         clusters = cluster_claims(results)
-        verified_claims = verify_claims(clusters)
+        verified = verify_claims(clusters)
 
-        if not verified_claims:
-            return jsonify({
-                "choices": [{
-                    "message": {
-                        "content": "I could not find reliable confirmation."
-                    }
-                }]
-            })
+        if not verified:
+            context = build_best_effort(results, user_query)
+        else:
+            context = build_factual_context(user_query, verified)
 
-        context = build_factual_context(user_query, verified_claims)
+    # ----------------------------
+    # LLM CALL
+    # ----------------------------
+    try:
+        response = requests.post(
+            HERMES_URL,
+            headers={"Authorization": f"Bearer {API_KEY}"},
+            json={
+                "model": "qwen3.5:9b",
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": context}
+                ],
+                "temperature": 0.2
+            },
+            timeout=120
+        )
 
-    # --- GENERATE ---
-    response = requests.post(
-        HERMES_URL,
-        headers={"Authorization": f"Bearer {API_KEY}"},
-        json={
-            "model": "qwen3.5:9b",
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": context}
-            ],
-            "temperature": 0.2
-        },
-        timeout=120
-    )
+        response.raise_for_status()
+        answer = response.json()["choices"][0]["message"]["content"]
 
-    answer = response.json()["choices"][0]["message"]["content"]
+    except Exception as e:
+        logging.error(f"LLM error: {e}")
+        return jsonify({
+            "choices": [{
+                "message": {
+                    "content": "Model generation failed."
+                }
+            }]
+        })
 
     return jsonify({
         "choices": [{
@@ -268,6 +349,16 @@ def chat():
         }]
     })
 
+# ----------------------------
+# HEALTH
+# ----------------------------
+@app.route("/health")
+def health():
+    return {"status": "ok"}
+
+# ----------------------------
+# EXPOSURE ENDPOINT
+# ----------------------------
 @app.route("/v1/models", methods=["GET"])
 def get_models():
     return jsonify({
@@ -282,10 +373,8 @@ def get_models():
         ]
     })
 
-@app.route("/health")
-def health():
-    return {"status": "ok"}
-
-
+# ----------------------------
+# MAIN
+# ----------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
