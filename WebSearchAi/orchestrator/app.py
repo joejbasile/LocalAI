@@ -11,12 +11,9 @@ from collections import defaultdict
 import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import CrossEncoder
 
 app = Flask(__name__)
-
-# ----------------------------
-# LOGGING
-# ----------------------------
 logging.basicConfig(level=logging.INFO)
 
 # ----------------------------
@@ -25,8 +22,7 @@ logging.basicConfig(level=logging.INFO)
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://searxng:8080/search")
 HERMES_URL = os.getenv("HERMES_URL", "http://hermes-gateway:8642/v1/chat/completions")
 API_KEY = os.getenv("HERMES_API_KEY", "hermes_secret_123")
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROMPT_PATH = os.path.join(BASE_DIR, "hermes-data/agent_prompt.md")
+RERANKER = CrossEncoder("BAAI/bge-reranker-base")
 
 BASE_CATEGORIES = [
     ("journalists", "investigation report"),
@@ -41,12 +37,6 @@ EXPERIENCE_CATEGORIES = [
     ("social", "twitter opinion")
 ]
 
-CULTURAL_CATEGORIES = [
-    ("social", "knowyourmeme archive"),
-    ("general", "substack analysis"),
-    ("discussions", "forum community") # Many SearXNG instances have a 'discussions' category
-]
-
 TRUSTED_DOMAINS = {
     "reuters.com": 1.0,
     "apnews.com": 1.0,
@@ -56,70 +46,70 @@ TRUSTED_DOMAINS = {
 }
 
 # ----------------------------
-# SYSTEM PROMPT
+# RERANKING
 # ----------------------------
-try:
-    with open(PROMPT_PATH, "r", encoding="utf-8") as f:
-        SYSTEM_PROMPT = f.read()
-except FileNotFoundError:
-    logging.warning("agent_prompt.md not found, falling back to default.")
+def rerank_results(query, results, top_k=8):
+    if not results:
+        return results
+    pairs = [(query, r["content"]) for r in results]
+    try:
+        scores = RERANKER.predict(pairs)
+    except Exception as e:
+        logging.warning(f"Reranker failed: {e}")
+        return results
+    ranked = list(zip(results, scores))
+    ranked.sort(key=lambda x: x[1], reverse=True)
+    reranked = []
+    for r, score in ranked[:top_k]:
+        r["rerank_score"] = float(score)
+        reranked.append(r)
+    return reranked
 
 # ----------------------------
-# INTENT CLASSIFIER
+# INTENT + ROUTING
 # ----------------------------
 def classify_intent(query: str) -> str:
     q = query.lower()
 
-    comparison = ["vs", "versus", "compare", "difference"]
-    instruction = ["how", "steps", "guide", "tutorial"]
-    opinion = ["should", "worth", "good", "bad", "best", "better", "think", "recommend"]
+    if any(x in q for x in ["what is", "who is", "define"]):
+        return "FACTUAL"
 
-    if any(x in q for x in comparison):
+    if any(x in q for x in ["vs", "compare", "difference"]):
         return "COMPARISON"
-    if any(x in q for x in instruction):
+    if any(x in q for x in ["how", "steps", "guide"]):
         return "INSTRUCTIONAL"
-    if any(x in q for x in opinion):
+    if any(x in q for x in ["should", "worth", "best", "recommend"]):
         return "OPINION"
-    if len(q.split()) < 4 and "?" not in q:
-        return "VAGUE"
 
     return "FACTUAL"
 
+def is_simple_query(query: str) -> bool:
+    return len(query.split()) <= 6
+
 # ----------------------------
-# QUERY COMPRESSION (FIXED CORE)
+# QUERY PROCESSING
 # ----------------------------
 def compress_search_query(text: str, max_words: int = 12) -> str:
     try:
-        # take first sentence only
         sentence = re.split(r'[.!?]', text)[0].strip().lower()
-        # remove common prefixes
-        prefixes = [
-            "what is", "why is", "how to", "how do i",
-            "can you", "please", "explain", "tell me"
-        ]
+        prefixes = ["what is", "why is", "how to", "explain"]
         for p in prefixes:
             if sentence.startswith(p):
                 sentence = sentence[len(p):].strip()
-        # extract keywords
         r = Rake()
         r.extract_keywords_from_text(sentence)
         phrases = r.get_ranked_phrases()
         query = " ".join(phrases[:3]).strip()
-        if not query:
-            query = sentence
-        # enforce strict length limit
-        return " ".join(query.split()[:max_words])
-    except Exception:
-        return " ".join(text.split()[:max_words])
+        return " ".join(query.split()[:max_words]) or sentence
 
-# ----------------------------
-# SAFETY LIMIT FOR SEARCH STRING
-# ----------------------------
+    except:
+        return text
+
 def safe_query(q: str, max_words: int = 14) -> str:
     return " ".join(q.split()[:max_words])
 
 # ----------------------------
-# DOMAIN SCORING
+# SCORING
 # ----------------------------
 def get_domain_score(url: str) -> float:
     domain = urlparse(url).netloc.lower()
@@ -132,7 +122,7 @@ def get_domain_score(url: str) -> float:
 # SEARCH
 # ----------------------------
 def search_category(query, category, modifier):
-    time.sleep(random.uniform(0.4, 2.0))
+    time.sleep(random.uniform(0.3, 1.2))
     try:
         final_q = safe_query(f"{query} {modifier}")
         res = requests.get(
@@ -141,62 +131,48 @@ def search_category(query, category, modifier):
             timeout=10
         )
         return res.json().get("results", [])
-    except Exception as e:
-        logging.warning(f"Search error: {e}")
+    except:
         return []
 
 # ----------------------------
 # CLEAN RESULTS
 # ----------------------------
 def normalize_results(results):
-    seen_urls = set()
-    domain_counts = defaultdict(int)  # Track how many results per site
+    seen = set()
+    domain_counts = defaultdict(int)
     cleaned = []
-    # Sort by score first so if we have to cap a domain, we keep their best results
-    sorted_results = sorted(results, key=lambda x: get_domain_score(x.get("url", "")), reverse=True)
-    for r in sorted_results:
+    results = sorted(results, key=lambda x: get_domain_score(x.get("url", "")), reverse=True)
+    for r in results:
         url = r.get("url")
         content = (r.get("content") or "").strip()
-        if not url:
-            continue 
+        if not url or url in seen:
+            continue
+        if len(content) < 40:  # lowered threshold
+            continue
         domain = urlparse(url).netloc.lower()
-        # --- LOGIC GATES ---
-        # 1. Skip duplicates
-        if url in seen_urls:
+        if domain_counts[domain] >= 3:  # relaxed cap
             continue
-        # 2. Skip thin content (protects against scraper/spam sites)
-        if len(content) < 60:
-            continue
-        # 3. DOMAIN DIVERSITY CAP:
-        # Limit any single domain to 2 results. This forces the orchestrator 
-        # to look at independent blogs once the "Big Guys" have had their say.
-        if domain_counts[domain] >= 2:
-            continue
-        # --- SCORE & COMMIT ---
-        seen_urls.add(url)
+        seen.add(url)
         domain_counts[domain] += 1
         cleaned.append({
             "url": url,
-            "content": content[:1200],  # Keep context chunks manageable
+            "content": content[:1000],
             "score": get_domain_score(url)
         })
-    # Final sort to ensure the most "trusted" or high-score items are at the top
-    # but the list is now guaranteed to be diverse.
-    return cleaned[:15] # Return top 15 diverse results
+    return cleaned[:8]
 
 # ----------------------------
-# CLAIM EXTRACTION
+# CLAIMS
 # ----------------------------
 def extract_claims(text):
     sentences = re.split(r'(?<=[.!?]) +', text)
-    return [s.strip() for s in sentences if len(s.split()) > 8]
+    return [s.strip() for s in sentences if len(s.split()) > 5]
 
 # ----------------------------
 # CLUSTERING
 # ----------------------------
 def cluster_claims(results):
-    texts = []
-    mapping = []
+    texts, mapping = [], []
 
     for r in results:
         for c in extract_claims(r["content"]):
@@ -206,8 +182,8 @@ def cluster_claims(results):
     if len(texts) < 2:
         return {}
 
-    vectorizer = TfidfVectorizer().fit_transform(texts)
-    sim_matrix = cosine_similarity(vectorizer)
+    vec = TfidfVectorizer().fit_transform(texts)
+    sim = cosine_similarity(vec)
 
     clusters = defaultdict(list)
     used = set()
@@ -218,7 +194,7 @@ def cluster_claims(results):
 
         cluster = []
         for j in range(len(texts)):
-            if sim_matrix[i][j] > 0.75:
+            if sim[i][j] > 0.65:  # lowered threshold
                 cluster.append(j)
                 used.add(j)
 
@@ -235,14 +211,17 @@ def cluster_claims(results):
     return clusters
 
 # ----------------------------
-# VERIFICATION
+# VERIFY
 # ----------------------------
 def verify_claims(clusters):
     verified = []
 
     for items in clusters.values():
         sources = list({i["source"] for i in items})
-        score = sum(i["score"] for i in items) / max(len(items), 1)
+        score = sum(
+            (0.4 * i["score"]) + (0.6 * i.get("rerank_score", 0))
+            for i in items
+        ) / len(items)
 
         if len(sources) >= 2 or score > 0.9:
             verified.append({
@@ -258,42 +237,18 @@ def verify_claims(clusters):
 def build_best_effort(results, query):
     top = sorted(results, key=lambda x: x["score"], reverse=True)[:5]
 
-    text = f"Best available information for: {query}\n\n"
+    text = f"{query}\n\n"
     for i, r in enumerate(top, 1):
         text += f"{i}. {r['content']}\nSource: {r['url']}\n\n"
 
     return text
 
 # ----------------------------
-# CONTEXT BUILDERS
-# ----------------------------
-def build_factual_context(query, claims):
-    context = f"QUERY: {query}\n\nVERIFIED CLAIMS:\n\n"
-
-    for i, c in enumerate(claims, 1):
-        context += f"{i}. {c['claim']}\n"
-        for j, s in enumerate(c["sources"], 1):
-            context += f"   [{j}] {s}\n"
-        context += "\n"
-
-    return context
-
-def build_sentiment_context(query, results):
-    results = sorted(results, key=lambda x: x["score"], reverse=True)
-
-    context = f"QUERY: {query}\n\nUSER EXPERIENCES:\n\n"
-
-    for i, r in enumerate(results[:5], 1):
-        context += f"{i}. {r['content']}\nSource: {r['url']}\n\n"
-
-    return context
-
-# ----------------------------
 # ROUTE
 # ----------------------------
 @app.route("/v1/chat/completions", methods=["POST"])
 def chat():
-    data = request.get_json(force=True, silent=True) or {}
+    data = request.get_json(force=True) or {}
     messages = data.get("messages", [])
 
     if not messages:
@@ -302,17 +257,22 @@ def chat():
     user_query = messages[-1]["content"]
     intent = classify_intent(user_query)
 
-    search_q = compress_search_query(user_query)
+    # 🧠 ROUTING LOGIC
+    if is_simple_query(user_query):
+        search_q = user_query
+    else:
+        search_q = compress_search_query(user_query)
 
-    mode = "SENTIMENT" if intent in ["VAGUE", "OPINION"] else "FACTUAL"
+    # Boost definitions
+    if intent == "FACTUAL":
+        search_q += " definition overview"
 
-    categories = BASE_CATEGORIES + EXPERIENCE_CATEGORIES if mode == "SENTIMENT" else BASE_CATEGORIES
+    categories = BASE_CATEGORIES
 
     # ----------------------------
     # SEARCH
     # ----------------------------
     raw_results = []
-
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [
             executor.submit(search_category, search_q, c, m)
@@ -322,22 +282,11 @@ def chat():
             raw_results.extend(f.result())
 
     results = normalize_results(raw_results)
+    results = rerank_results(user_query, results)
 
-    if not results:
-        return jsonify({
-            "choices": [{
-                "message": {
-                    "content": "Please add more details to the prompt."
-                }
-            }]
-    #     })
-
-    # ----------------------------
-    # MODE HANDLING
-    # ----------------------------
-    if mode == "SENTIMENT":
-        context = build_sentiment_context(user_query, results)
-
+    # 🚀 SIMPLE MODE (bypass clustering)
+    if is_simple_query(user_query) and results:
+        context = build_best_effort(results, user_query)
     else:
         clusters = cluster_claims(results)
         verified = verify_claims(clusters)
@@ -345,7 +294,12 @@ def chat():
         if not verified:
             context = build_best_effort(results, user_query)
         else:
-            context = build_factual_context(user_query, verified)
+            context = f"QUERY: {user_query}\n\nVERIFIED CLAIMS:\n\n"
+            for i, c in enumerate(verified, 1):
+                context += f"{i}. {c['claim']}\n"
+                for j, s in enumerate(c["sources"], 1):
+                    context += f"   [{j}] {s}\n"
+                context += "\n"
 
     # ----------------------------
     # LLM CALL
@@ -356,27 +310,17 @@ def chat():
             headers={"Authorization": f"Bearer {API_KEY}"},
             json={
                 "model": "qwen3.5:9b",
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": context}
-                ],
+                "messages": [{"role": "user", "content": context}],
                 "temperature": 0.2
             },
-            timeout=120
+            timeout=60
         )
 
-        response.raise_for_status()
         answer = response.json()["choices"][0]["message"]["content"]
 
     except Exception as e:
-        logging.error(f"LLM error: {e}")
-        return jsonify({
-            "choices": [{
-                "message": {
-                    "content": "Model generation failed."
-                }
-            }]
-        })
+        logging.error(e)
+        answer = "Model failed."
 
     return jsonify({
         "choices": [{
