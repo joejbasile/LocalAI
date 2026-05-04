@@ -22,7 +22,10 @@ logging.basicConfig(level=logging.INFO)
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://searxng:8080/search")
 HERMES_URL = os.getenv("HERMES_URL", "http://hermes-gateway:8642/v1/chat/completions")
 API_KEY = os.getenv("HERMES_API_KEY", "hermes_secret_123")
+MODEL_NAME = os.getenv("MODEL_NAME")
 RERANKER = CrossEncoder("BAAI/bge-reranker-base")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROMPT_PATH = os.path.join(BASE_DIR,"agent_prompt.md")
 
 BASE_CATEGORIES = [
     ("journalists", "investigation report"),
@@ -44,6 +47,13 @@ TRUSTED_DOMAINS = {
     "nature.com": 1.0,
     "science.org": 1.0,
 }
+
+logging.info(f"Looking for prompt at: {PROMPT_PATH}")
+try:
+    with open(PROMPT_PATH, "r", encoding="utf-8") as f:
+        SYSTEM_PROMPT = f.read()
+except FileNotFoundError:
+    logging.error("agent_prompt.md not found")
 
 # ----------------------------
 # RERANKING
@@ -307,11 +317,14 @@ def chat():
             HERMES_URL,
             headers={"Authorization": f"Bearer {API_KEY}"},
             json={
-                "model": "qwen3.5:9b",
-                "messages": [{"role": "user", "content": context}],
+                "model": MODEL_NAME,
+                "messages": [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": context}
+                ],
                 "temperature": 0.2
             },
-            timeout=60
+            timeout=120
         )
 
         answer = response.json()["choices"][0]["message"]["content"]
