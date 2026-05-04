@@ -65,7 +65,7 @@ Rules:
 """
 
 # ----------------------------
-# INTENT CLASSIFIER (FIXED)
+# INTENT CLASSIFIER
 # ----------------------------
 def classify_intent(query: str) -> str:
     q = query.lower()
@@ -86,16 +86,37 @@ def classify_intent(query: str) -> str:
     return "FACTUAL"
 
 # ----------------------------
-# QUERY ENHANCEMENT
+# QUERY COMPRESSION (FIXED CORE)
 # ----------------------------
-def extract_search_keywords(text: str) -> str:
+def compress_search_query(text: str, max_words: int = 12) -> str:
     try:
+        # take first sentence only
+        sentence = re.split(r'[.!?]', text)[0].strip().lower()
+        # remove common prefixes
+        prefixes = [
+            "what is", "why is", "how to", "how do i",
+            "can you", "please", "explain", "tell me"
+        ]
+        for p in prefixes:
+            if sentence.startswith(p):
+                sentence = sentence[len(p):].strip()
+        # extract keywords
         r = Rake()
-        r.extract_keywords_from_text(text[:800])
-        keywords = " ".join(r.get_ranked_phrases()[:5])
-        return f"{text} {keywords}".strip()
-    except:
-        return text
+        r.extract_keywords_from_text(sentence)
+        phrases = r.get_ranked_phrases()
+        query = " ".join(phrases[:3]).strip()
+        if not query:
+            query = sentence
+        # enforce strict length limit
+        return " ".join(query.split()[:max_words])
+    except Exception:
+        return " ".join(text.split()[:max_words])
+
+# ----------------------------
+# SAFETY LIMIT FOR SEARCH STRING
+# ----------------------------
+def safe_query(q: str, max_words: int = 14) -> str:
+    return " ".join(q.split()[:max_words])
 
 # ----------------------------
 # DOMAIN SCORING
@@ -113,9 +134,10 @@ def get_domain_score(url: str) -> float:
 def search_category(query, category, modifier):
     time.sleep(random.uniform(0.2, 0.5))
     try:
+        final_q = safe_query(f"{query} {modifier}")
         res = requests.get(
             SEARXNG_URL,
-            params={"q": f"{query} {modifier}", "format": "json"},
+            params={"q": final_q, "format": "json"},
             timeout=10
         )
         return res.json().get("results", [])
@@ -124,7 +146,7 @@ def search_category(query, category, modifier):
         return []
 
 # ----------------------------
-# CLEAN + DEDUP RESULTS
+# CLEAN RESULTS
 # ----------------------------
 def normalize_results(results):
     seen = set()
@@ -155,7 +177,7 @@ def extract_claims(text):
     return [s.strip() for s in sentences if len(s.split()) > 8]
 
 # ----------------------------
-# SEMANTIC CLUSTERING (FIXED CORE)
+# CLUSTERING
 # ----------------------------
 def cluster_claims(results):
     texts = []
@@ -198,7 +220,7 @@ def cluster_claims(results):
     return clusters
 
 # ----------------------------
-# VERIFICATION (FIXED + SOFTENED)
+# VERIFICATION
 # ----------------------------
 def verify_claims(clusters):
     verified = []
@@ -216,7 +238,7 @@ def verify_claims(clusters):
     return verified
 
 # ----------------------------
-# FALLBACK (IMPORTANT FIX)
+# FALLBACK
 # ----------------------------
 def build_best_effort(results, query):
     top = sorted(results, key=lambda x: x["score"], reverse=True)[:5]
@@ -265,7 +287,7 @@ def chat():
     user_query = messages[-1]["content"]
     intent = classify_intent(user_query)
 
-    search_q = extract_search_keywords(user_query)
+    search_q = compress_search_query(user_query)
 
     mode = "SENTIMENT" if intent in ["VAGUE", "OPINION"] else "FACTUAL"
 
@@ -357,7 +379,7 @@ def health():
     return {"status": "ok"}
 
 # ----------------------------
-# EXPOSURE ENDPOINT
+# MODELS
 # ----------------------------
 @app.route("/v1/models", methods=["GET"])
 def get_models():
@@ -365,7 +387,7 @@ def get_models():
         "object": "list",
         "data": [
             {
-                "id": "hermes-agent", # This is the name you'll see in the Open WebUI dropdown
+                "id": "hermes-agent",
                 "object": "model",
                 "created": int(time.time()),
                 "owned_by": "orchestrator"
