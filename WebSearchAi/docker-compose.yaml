@@ -98,6 +98,10 @@ services:
       context: ./orchestrator  # Path to the folder containing your app.py and Dockerfile
     container_name: orchestrator
     restart: unless-stopped
+    environment:
+      - SEARXNG_URL=http://searxng:8080/search
+      - HERMES_URL=http://hermes-gateway:8642/v1/chat/completions
+      - MODEL_NAME=${MODEL_NAME}
     ports:
       - "5000:5000"
     depends_on:

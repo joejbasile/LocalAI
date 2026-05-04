@@ -17,7 +17,7 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # ----------------------------
-# CONFIG
+# CONFIGS
 # ----------------------------
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://searxng:8080/search")
 HERMES_URL = os.getenv("HERMES_URL", "http://hermes-gateway:8642/v1/chat/completions")
@@ -312,23 +312,25 @@ def chat():
     # ----------------------------
     # LLM CALL
     # ----------------------------
+    # 1. Start with the System Prompt
+    final_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # 2. Append all previous conversation history (excluding the very last prompt)
+    if len(messages) > 1:
+        final_messages.extend(messages[:-1])
+    # 3. Append the final user prompt wrapped in your search context
+    final_messages.append({"role": "user", "content": context})
     try:
         response = requests.post(
             HERMES_URL,
             headers={"Authorization": f"Bearer {API_KEY}"},
             json={
                 "model": MODEL_NAME,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": context}
-                ],
+                "messages": final_messages,
                 "temperature": 0.2
             },
             timeout=120
         )
-
         answer = response.json()["choices"][0]["message"]["content"]
-
     except Exception as e:
         logging.error(e)
         answer = "Model failed."
