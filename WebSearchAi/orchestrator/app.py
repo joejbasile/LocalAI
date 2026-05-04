@@ -25,7 +25,6 @@ logging.basicConfig(level=logging.INFO)
 SEARXNG_URL = os.getenv("SEARXNG_URL", "http://searxng:8080/search")
 HERMES_URL = os.getenv("HERMES_URL", "http://hermes-gateway:8642/v1/chat/completions")
 API_KEY = os.getenv("HERMES_API_KEY", "hermes_secret_123")
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROMPT_PATH = os.path.join(BASE_DIR, "hermes-data/agent_prompt.md")
 
@@ -42,6 +41,12 @@ EXPERIENCE_CATEGORIES = [
     ("social", "twitter opinion")
 ]
 
+CULTURAL_CATEGORIES = [
+    ("social", "knowyourmeme archive"),
+    ("general", "substack analysis"),
+    ("discussions", "forum community") # Many SearXNG instances have a 'discussions' category
+]
+
 TRUSTED_DOMAINS = {
     "reuters.com": 1.0,
     "apnews.com": 1.0,
@@ -53,16 +58,11 @@ TRUSTED_DOMAINS = {
 # ----------------------------
 # SYSTEM PROMPT
 # ----------------------------
-SYSTEM_PROMPT = """
-You are an evidence-based assistant.
-
-Rules:
-- Use provided context as primary evidence
-- You may use general knowledge when evidence is weak
-- Clearly indicate uncertainty when needed
-- Never fabricate facts
-- Respond in English only
-"""
+try:
+    with open(PROMPT_PATH, "r", encoding="utf-8") as f:
+        SYSTEM_PROMPT = f.read()
+except FileNotFoundError:
+    logging.warning("agent_prompt.md not found, falling back to default.")
 
 # ----------------------------
 # INTENT CLASSIFIER
@@ -132,7 +132,7 @@ def get_domain_score(url: str) -> float:
 # SEARCH
 # ----------------------------
 def search_category(query, category, modifier):
-    time.sleep(random.uniform(0.2, 0.5))
+    time.sleep(random.uniform(0.4, 2.0))
     try:
         final_q = safe_query(f"{query} {modifier}")
         res = requests.get(
@@ -149,25 +149,40 @@ def search_category(query, category, modifier):
 # CLEAN RESULTS
 # ----------------------------
 def normalize_results(results):
-    seen = set()
+    seen_urls = set()
+    domain_counts = defaultdict(int)  # Track how many results per site
     cleaned = []
-
-    for r in results:
+    # Sort by score first so if we have to cap a domain, we keep their best results
+    sorted_results = sorted(results, key=lambda x: get_domain_score(x.get("url", "")), reverse=True)
+    for r in sorted_results:
         url = r.get("url")
         content = (r.get("content") or "").strip()
-
-        if not url or url in seen or len(content) < 60:
+        if not url:
+            continue 
+        domain = urlparse(url).netloc.lower()
+        # --- LOGIC GATES ---
+        # 1. Skip duplicates
+        if url in seen_urls:
             continue
-
-        seen.add(url)
-
+        # 2. Skip thin content (protects against scraper/spam sites)
+        if len(content) < 60:
+            continue
+        # 3. DOMAIN DIVERSITY CAP:
+        # Limit any single domain to 2 results. This forces the orchestrator 
+        # to look at independent blogs once the "Big Guys" have had their say.
+        if domain_counts[domain] >= 2:
+            continue
+        # --- SCORE & COMMIT ---
+        seen_urls.add(url)
+        domain_counts[domain] += 1
         cleaned.append({
             "url": url,
-            "content": content[:1200],
+            "content": content[:1200],  # Keep context chunks manageable
             "score": get_domain_score(url)
         })
-
-    return cleaned
+    # Final sort to ensure the most "trusted" or high-score items are at the top
+    # but the list is now guaranteed to be diverse.
+    return cleaned[:15] # Return top 15 diverse results
 
 # ----------------------------
 # CLAIM EXTRACTION
@@ -298,7 +313,7 @@ def chat():
     # ----------------------------
     raw_results = []
 
-    with ThreadPoolExecutor(max_workers=5) as executor:
+    with ThreadPoolExecutor(max_workers=2) as executor:
         futures = [
             executor.submit(search_category, search_q, c, m)
             for c, m in categories
@@ -312,10 +327,10 @@ def chat():
         return jsonify({
             "choices": [{
                 "message": {
-                    "content": "No relevant sources were found."
+                    "content": "Please add more details to the prompt."
                 }
             }]
-        })
+    #     })
 
     # ----------------------------
     # MODE HANDLING
