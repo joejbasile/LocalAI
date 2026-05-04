@@ -335,6 +335,26 @@ def chat():
 def health():
     return {"status": "ok"}
 
+# ----------------------------
+# MODELS
+# ----------------------------
+@app.route("/v1/models", methods=["GET"])
+def get_models():
+    return jsonify({
+        "object": "list",
+        "data": [
+            {
+                "id": "hermes-agent",
+                "object": "model",
+                "created": int(time.time()),
+                "owned_by": "orchestrator"
+            }
+        ]
+    })
+
+# ----------------------------
+# MAIN
+# ----------------------------
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
