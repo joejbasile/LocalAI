@@ -1,7 +1,15 @@
 #!/bin/sh
 cd "$(dirname "$0")"
-docker compose -f docker-compose.yaml down -v
+echo "Running Docker cleanup..."
+docker compose down -v
 docker system prune -f -a --volumes
-rm -rf hermes-data/*
-rm -rf orchestrator/agent_prompt.md
+rm -f orchestrator/agent_prompt.md
 cp agent_prompt.md orchestrator/
+# Run Windows-only compaction if PowerShell exists
+if command -v powershell.exe >/dev/null 2>&1; then
+  echo "Running Windows disk compaction..."
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -W)"
+  powershell.exe -ExecutionPolicy Bypass -File "$SCRIPT_DIR/compact-docker.ps1"
+else
+  echo "PowerShell not found. Skipping disk compaction."
+fi

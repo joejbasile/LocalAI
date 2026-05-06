@@ -56,6 +56,10 @@ To safely stop the program:
 
 To completely remove all components:
 
+You will need to use an ADMINISTRATIVE GIT BASH
+
+After opening the Git Bash, change the directory to this folder (WebSearchAi)
+
 ```bash
 ./uninstall.sh
 ```
