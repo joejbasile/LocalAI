@@ -3,7 +3,7 @@
 ## Prerequisites
 
 ### System Requirements
-- 32, 24, 16, or 8 GB VRAM GPU depending on what model you want to run.
+- 32, 24, 16 GB VRAM GPU depending on what model you want to run.
 - 16 GB DRAM + the amount of DRAM needed for the OS (Windows is usually about 8 GB, which would be 24 GB total).
 - 32 GB of Storage
 
@@ -39,6 +39,14 @@ Run the startup script:
 ```
 
 Wait for the process to complete.
+
+Log into OpenWebUI
+
+Click on your profile --> Admin Panel --> Settings --> Models --> Enter into your model ->
+enable Code Interpreter, Web Search, File Upload, File Context, Terminal, Builtin Tools, disable everything else
+under Builtin Tools enable Time & Calculation, Memory, Chat History, Notes, Knowledge Base, Channels, Web Search, Code Interpreter, Task Management, Automations, Calendar, then save
+
+Click on your profile --> Admin Panel --> Settings --> Web Search --> enable web search, set to SearXNG as your engine, Search Result Count 4, Concurrent Requests 2 (top), Concurrent Requests (bottom) 12, then save
 
 ---
 

@@ -1,32 +1,68 @@
-#!/bin/sh
-cd "$(dirname "$0")"
+#!/usr/bin/env bash
 
-echo "Select model:"
-echo "1) qwen3.6:35b for 32 GB VRAM"
-echo "2) qwen3.6:27b for 24 GB VRAM"
-echo "3) qwen3.5:9b for 16 GB VRAM"
-echo "4) qwen3.5:4b for 8 GB VRAM"
-read -p "Enter choice as number [1-4]: " choice
+cd "$(dirname "$0")" || exit 1
+
+echo "=========================================="
+echo "   Select Coding Model to Initialize"
+echo "=========================================="
+echo "1) Qwen2.5-Coder 14B Q5_K_M"
+echo "2) Qwen2.5-Coder 7B Q5_K_M"
+echo "------------------------------------------"
+
+printf "Enter choice as number [Default is 1]: "
+read -r choice
 
 case $choice in
-  1)
-    MODEL_NAME="qwen3.6:35b"
+  ""|1)
+    MODEL_FILE="qwen2.5-coder-14b-instruct-q5_k_m.gguf"
+    OLLAMA_MODEL="qwen-coder-agent"
     ;;
   2)
-    MODEL_NAME="qwen3.6:27b"
-    ;;
-  3)
-    MODEL_NAME="qwen3.5:9b"
-    ;;
-  4)
-    MODEL_NAME="qwen3.5:4b"
+    MODEL_FILE="qwen2.5-coder-7b-instruct-q5_k_m.gguf"
+    OLLAMA_MODEL="qwen-coder-agent-7b"
     ;;
   *)
-    echo "Invalid choice"
+    echo "Error: Invalid choice '$choice'. Exiting."
     exit 1
     ;;
 esac
 
-echo "Using model: $MODEL_NAME"
 
-MODEL_NAME=$MODEL_NAME docker compose -f docker-compose.yaml up -d --build
+echo ""
+echo "--> Selected GGUF: $MODEL_FILE"
+echo "--> Ollama model: $OLLAMA_MODEL"
+echo ""
+
+
+export MODEL_FILE
+export OLLAMA_MODEL
+
+
+echo "--> Starting Ollama..."
+docker compose up -d ollama
+
+
+echo "--> Waiting for Ollama health..."
+until docker exec ollama ollama list >/dev/null 2>&1
+do
+    sleep 5
+done
+
+
+echo "--> Building model..."
+docker compose --profile builder run --rm ollama-builder
+
+
+echo "--> Starting UI services..."
+docker compose up -d searxng open-webui
+
+
+echo ""
+echo "=========================================="
+echo " Stack Ready"
+echo "=========================================="
+echo " Open WebUI:"
+echo " http://localhost:3000"
+echo ""
+echo " Model:"
+echo " $OLLAMA_MODEL"
