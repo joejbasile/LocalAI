@@ -1,26 +1,43 @@
 #!/bin/sh
 set -e
 
-MODEL_NAME="qwen-coder-agent"
-# Look directly inside the mounted models folder
 MODELFILE_PATH="/models/Modelfile"
+DYNAMIC_MODELFILE="/tmp/Modelfile.dynamic"
 
-echo "Waiting for Ollama to respond at ${OLLAMA_HOST}..."
+echo "=========================================="
+echo " Ollama Model Compiler"
+echo "=========================================="
+echo "Target Ollama Name: ${OLLAMA_MODEL}"
+echo "Source GGUF:        /models/${MODEL_FILE}"
+echo "------------------------------------------"
+
+echo "--> Waiting for Ollama engine at ${OLLAMA_HOST}..."
 until ollama list >/dev/null 2>&1; do
   sleep 2
 done
+echo "--> Ollama engine is online."
 
-echo "Ollama ready."
-
-if ollama list | grep -q "${MODEL_NAME}"; then
-  echo "Model '${MODEL_NAME}' already exists. Skipping build step."
+# 1. Check if the model is already compiled in Ollama
+if ollama list | grep -q "${OLLAMA_MODEL}"; then
+  echo "--> Model '${OLLAMA_MODEL}' is already registered in Ollama. Skipping build."
   exit 0
 fi
 
-echo "Compiling ${MODEL_NAME} from ${MODELFILE_PATH}..."
-ollama create "${MODEL_NAME}" -f "$MODELFILE_PATH"
+echo "--> Generating dynamic runtime Modelfile..."
 
-echo "Model compiled successfully!"
+# 2. Inject our dynamic FROM line at the very top
+echo "FROM /models/${MODEL_FILE}" > "$DYNAMIC_MODELFILE"
 
-# List the models to verify it's active
+# 3. Append the rest of your Modelfile, but STRIP OUT any existing FROM lines to prevent collisions
+if [ -f "$MODELFILE_PATH" ]; then
+    grep -v '^FROM ' "$MODELFILE_PATH" >> "$DYNAMIC_MODELFILE"
+else
+    echo "Error: Base Modelfile not found at ${MODELFILE_PATH}"
+    exit 1
+fi
+
+echo "--> Compiling '${OLLAMA_MODEL}' inside Ollama..."
+ollama create "${OLLAMA_MODEL}" -f "$DYNAMIC_MODELFILE"
+
+echo "--> Compilation successful! Active models:"
 ollama list

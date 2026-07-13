@@ -45,6 +45,10 @@ services:
       - ./scripts:/scripts
     environment:
       - OLLAMA_HOST=http://ollama:11434
+      - MODEL_FILE=${MODEL_FILE}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      - HF_REPO=${HF_REPO}
+      - HF_FILE_PATTERN=${HF_FILE_PATTERN}
     depends_on:
       ollama:
         condition: service_healthy
@@ -52,8 +56,8 @@ services:
       - /bin/sh
       - -c
       - |
-        /scripts/download-model.sh
-        /scripts/ollama-init.sh
+        sh /scripts/download-model.sh
+        sh /scripts/ollama-init.sh
 
   # ==========================================
   # PRIVATE SEARCH ENGINE
