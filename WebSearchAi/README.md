@@ -13,6 +13,7 @@
 
 ### Linux
 - Install **Docker Desktop**
+- Make sure scripts are executable, for example: chmod +x ./scripts/download-model.sh
 
 ---
 
@@ -38,15 +39,22 @@ Run the startup script:
 ./startup.sh
 ```
 
+Select your model.
+
 Wait for the process to complete.
 
 Log into OpenWebUI
 
 Click on your profile --> Admin Panel --> Settings --> Models --> Enter into your model ->
-enable Code Interpreter, Web Search, File Upload, File Context, Terminal, Builtin Tools, disable everything else
-under Builtin Tools enable Time & Calculation, Memory, Chat History, Notes, Knowledge Base, Channels, Web Search, Code Interpreter, Task Management, Automations, Calendar, then save
+Enable Code Interpreter, Web Search, File Upload, File Context, Terminal, Builtin Tools, disable everything else
+Under Builtin Tools enable Time & Calculation, Memory, Chat History, Notes, Knowledge Base, Channels, Web Search, Code Interpreter, Task Management, Automations, Calendar, disable everything else
+Expand the Advanced Params, change Function Calling from default/native to legacy
+Save
 
-Click on your profile --> Admin Panel --> Settings --> Web Search --> enable web search, set to SearXNG as your engine, Search Result Count 4, Concurrent Requests 2 (top), Concurrent Requests (bottom) 12, then save
+Click on your profile --> Admin Panel --> Settings --> Web Search --> enable web search, set to SearXNG as your engine, Search Result Count 4, Concurrent Requests 2 (top), Concurrent Requests (bottom) 12
+Save
+
+The first prompt submitted to the model will be slow.
 
 ---
 
