@@ -31,8 +31,8 @@ rm -f "$DYNAMIC_MODELFILE"
 # Inject the base GGUF layer pointer at the top
 echo "FROM /models/${MODEL_FILE}" > "$DYNAMIC_MODELFILE"
 
-# Determine which profile to append based on the model name choice
-if [ "${OLLAMA_MODEL}" = "qwythos-general-agent-9b" ] || [ "${OLLAMA_MODEL}" = "qwythos-agent-9b" ]; then
+# Determine which profile to append based on the model name choice substring matching
+if [[ "${OLLAMA_MODEL}" == *"general"* ]]; then
     SYSTEM_PROMPT_FILE="/scripts/system_prompt_general.txt"
 else
     SYSTEM_PROMPT_FILE="/scripts/system_prompt_coding.txt"

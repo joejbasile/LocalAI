@@ -3,6 +3,7 @@
 The intent of this project is to give the everyday user who does not have unlimited GPU processing power a good local AI setup with as few steps as possible.
 Keep in mind these models do not have as many parameters as the big cloud models, be detailed and specific in your prompts.
 It is implied that general purpose agents should not be used for coding
+You may add you own model to the startup.sh file from hugging face as long as you follw the format. Simply list your model as a new choice and specify the agent name as either "coder" or "general"
 
 ## Prerequisites
 
