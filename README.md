@@ -8,7 +8,7 @@ Smaller models may struggle with accuracy and hallucinations
 ## Prerequisites
 
 ### System Requirements
-- 32, 24, 16 GB VRAM GPU depending on what model you want to run.
+- 32, 24, 16, 10, 8 GB VRAM GPU depending on what model you want to run.
 - Nvidia GPU
 - 16 GB DRAM + the amount of DRAM needed for the OS (Windows is usually about 8 GB, which would be 24 GB total).
 - 32 (or less depending on the model) GB of Storage
