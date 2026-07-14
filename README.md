@@ -3,6 +3,7 @@
 The intent of this project is to give the everyday user who does not have unlimited GPU processing power a good local AI setup with as few steps as possible.
 Keep in mind these models do not have as many parameters as the big cloud models, be detailed and specific in your prompts.
 It is implied that general purpose agents should not be used for coding
+Smaller models may struggle with accuracy and hallucinations
 
 ## Prerequisites
 
