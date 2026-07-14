@@ -97,12 +97,14 @@ To completely remove all components:
 
 You will need to use an ADMINISTRATIVE GIT BASH
 
-After opening the Git Bash, change the directory to this folder (WebSearchAi)
+After opening the Git Bash, change the directory to this folder (LocalAI)
+
+WARNING: If you have other docker volumes you want to keep on your computer, modify the below script
 
 ```bash
 ./uninstall.sh
 ```
-You can then safely delete the project folder.
+After completion, you can then safely delete the project folder.
 
 ---
 
