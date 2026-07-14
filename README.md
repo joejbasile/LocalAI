@@ -7,6 +7,7 @@ You may add you own model to the startup.sh file from hugging face as long as yo
 Smaller models may struggle with accuracy and hallucinations
 
 Current Models
+
     qwen2.5-coder-7b-instruct-q5_k_m,
     qwen2.5-coder-14b-instruct-q5_k_m,
     Qwen3-Coder-30B-A3B-Instruct-UD-Q5_K_XL,
