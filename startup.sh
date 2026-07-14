@@ -12,7 +12,7 @@ echo "4) Qwythos-9B-v2 Q5_K_M (General / Web Agent) (10+ GB VRAM)"
 echo "5) Qwen3.6 35B-A3B UD-Q5_K_XL (General / Web Agent) (32+ GB VRAM)"
 echo "------------------------------------------"
 
-printf "Enter choice as number [Default is 1] (1-3 are coding agents, 4 is a general purpose agent): "
+printf "Enter choice as number [Default is 1] (1-3 are coding agents, 4-5 are general purpose web search agents): "
 read -r choice
 
 case $choice in
