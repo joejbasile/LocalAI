@@ -32,11 +32,14 @@ rm -f "$DYNAMIC_MODELFILE"
 echo "FROM /models/${MODEL_FILE}" > "$DYNAMIC_MODELFILE"
 
 # Determine which profile to append based on the model name choice substring matching
-if [[ "${OLLAMA_MODEL}" == *"general"* ]]; then
+case "${OLLAMA_MODEL}" in
+  *general*)
     SYSTEM_PROMPT_FILE="/scripts/system_prompt_general.txt"
-else
+    ;;
+  *)
     SYSTEM_PROMPT_FILE="/scripts/system_prompt_coding.txt"
-fi
+    ;;
+esac
 
 # 2. Append the prompt file content directly without modification
 if [ -f "$SYSTEM_PROMPT_FILE" ]; then
