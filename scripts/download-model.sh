@@ -1,5 +1,7 @@
-#!/usr/bin/sh
+#!/usr/bin/env bash
 set -e
+
+export HF_HUB_DISABLE_XET=1
 
 MODEL_DIR="/models"
 

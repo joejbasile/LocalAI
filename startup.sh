@@ -5,10 +5,10 @@ cd "$(dirname "$0")" || exit 1
 echo "=========================================="
 echo "   Select Coding Model to Initialize"
 echo "=========================================="
-echo "1) Qwen2.5-Coder 7B Q5_K_M (8 GB VRAM)"
-echo "2) Qwen2.5-Coder 14B Q5_K_M (16 GB VRAM)"
-echo "3) Qwen3-Coder 30B-A3B UD-Q5_K_XL (MoE) (32 GB VRAM)"
-echo "4) Qwythos-9B-v2 Q5_K_M (General / Web Agent) (12+ GB VRAM)"
+echo "1) Qwen2.5-Coder 7B Q5_K_M (8+ GB VRAM)"
+echo "2) Qwen2.5-Coder 14B Q5_K_M (16+ GB VRAM)"
+echo "3) Qwen3-Coder 30B-A3B UD-Q5_K_XL (MoE) (32+ GB VRAM)"
+echo "4) Qwythos-9B-v2 Q5_K_M (General / Web Agent) (10+ GB VRAM)"
 echo "------------------------------------------"
 
 printf "Enter choice as number [Default is 1] (1-3 are coding agents, 4 is a general purpose agent): "
@@ -31,14 +31,14 @@ case $choice in
     MODEL_FILE="Qwen3-Coder-30B-A3B-Instruct-UD-Q5_K_XL.gguf"
     OLLAMA_MODEL="qwen3-coder-agent-30b"
     HF_REPO="unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF"
-    # Target split chunks if distributed in multi-part format
-    HF_FILE_PATTERN="Qwen3-Coder-30B-A3B-Instruct-UD-Q5_K_XL*-of-*.gguf"
+    # Exact match: Unsloth provides this as a single file, not split chunks
+    HF_FILE_PATTERN="Qwen3-Coder-30B-A3B-Instruct-UD-Q5_K_XL.gguf"
     ;;
   4)
     MODEL_FILE="Qwythos-9B-v2-Q5_K_M.gguf"
     OLLAMA_MODEL="qwythos-general-agent-9b"
     HF_REPO="empero-ai/Qwythos-9B-v2-GGUF"
-    HF_FILE_PATTERN="*Q5_K_M*.gguf"
+    HF_FILE_PATTERN="Qwythos-9B-v2-Q5_K_M.gguf"
     ;;
   *)
     echo "Error: Invalid choice '$choice'. Exiting."

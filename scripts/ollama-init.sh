@@ -1,15 +1,15 @@
-#!/bin/sh
-set -e  
+#!/usr/bin/env bash
+set -e
 
 MODELFILE_PATH="/models/Modelfile"
-DYNAMIC_MODELFILE="/tmp/Modelfile.dynamic"  
+DYNAMIC_MODELFILE="/tmp/Modelfile.dynamic"
 
 echo "=========================================="
 echo " Ollama Model Compiler"
 echo "=========================================="
 echo "Target Ollama Name: ${OLLAMA_MODEL}"
 echo "Source GGUF:        /models/${MODEL_FILE}"
-echo "------------------------------------------"  
+echo "------------------------------------------"
 
 echo "--> Waiting for Ollama engine at ${OLLAMA_HOST}..."
 until ollama list >/dev/null 2>&1; do
@@ -21,7 +21,7 @@ echo "--> Ollama engine is online."
 if ollama list | grep -q "${OLLAMA_MODEL}"; then
     echo "--> Model '${OLLAMA_MODEL}' is already registered in Ollama. Skipping build."
     exit 0
-fi  
+fi
 
 echo "--> Generating dynamic runtime Modelfile..."
 
@@ -55,7 +55,7 @@ if [ -f "$MODELFILE_PATH" ] && [ -s "$MODELFILE_PATH" ]; then
 fi
 
 echo "--> Compiling '${OLLAMA_MODEL}' inside Ollama..."
-ollama create "${OLLAMA_MODEL}" -f "$DYNAMIC_MODELFILE"  
+ollama create "${OLLAMA_MODEL}" -f "$DYNAMIC_MODELFILE"
 
 echo "--> Compilation successful! Active models:"
 ollama list

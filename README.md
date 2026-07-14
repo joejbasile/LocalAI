@@ -1,13 +1,16 @@
 # Project README
 
 The intent of this project is to give the everyday user who does not have unlimited GPU processing power a good local AI setup with as few steps as possible.
+Keep in mind these models do not have as many parameters as the big cloud models, be detailed and specific in your prompts.
+It is implied that general purpose agents should not be used for coding
 
 ## Prerequisites
 
 ### System Requirements
 - 32, 24, 16 GB VRAM GPU depending on what model you want to run.
+- Nvidia GPU
 - 16 GB DRAM + the amount of DRAM needed for the OS (Windows is usually about 8 GB, which would be 24 GB total).
-- 32 GB of Storage
+- 32 (or less depending on the model) GB of Storage
 
 ### Windows
 - Install **WSL2 (Windows Subsystem for Linux)**
@@ -47,9 +50,18 @@ Wait for the process to complete.
 
 Log into OpenWebUI
 
+For Coding Agents
 Click on your profile --> Admin Panel --> Settings --> Models --> Enter into your model ->
+Code Interpreter should be used for reading code you provide, not for asking questions about code or for code generation from scratch.
 Enable Code Interpreter, Web Search, File Upload, File Context, Terminal, Builtin Tools, disable everything else
 Under Builtin Tools enable Time & Calculation, Memory, Chat History, Notes, Knowledge Base, Channels, Web Search, Code Interpreter, Task Management, Automations, Calendar, disable everything else
+Expand the Advanced Params, change Function Calling from default/native to legacy
+Save
+
+For General Agents
+Click on your profile --> Admin Panel --> Settings --> Models --> Enter into your model ->
+Enable  Web Search, File Upload, File Context, Terminal, Builtin Tools, disable everything else
+Under Builtin Tools enable Time & Calculation, Memory, Chat History, Notes, Knowledge Base, Channels, Web Search, Task Management, Automations, Calendar, disable everything else
 Expand the Advanced Params, change Function Calling from default/native to legacy
 Save
 

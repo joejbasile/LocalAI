@@ -1,6 +1,6 @@
 FROM ollama/ollama:latest
 
-# 1. Install Python, pip, and lightweight build dependencies
+# 1. Install Python, pip, build tools, and dos2unix for line-ending sanitization
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        python3 \
@@ -9,6 +9,7 @@ RUN apt-get update \
        git \
        build-essential \
        cmake \
+       dos2unix \
     && pip3 install --break-system-packages huggingface_hub \
     # 2. Clone llama.cpp and compile ONLY the llama-gguf-split utility statically
     && git clone --depth 1 https://github.com/ggerganov/llama.cpp.git /tmp/llama.cpp \
@@ -28,5 +29,7 @@ RUN apt-get update \
 ENV PATH="/root/.local/bin:/usr/local/bin:${PATH}"
 ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH}"
 
+# 5. Copy scripts and automatically convert line endings from Windows CRLF to Linux LF
 COPY scripts /scripts
-RUN chmod +x /scripts/*.sh
+RUN dos2unix /scripts/*.sh 2>/dev/null || true \
+    && chmod +x /scripts/*.sh
