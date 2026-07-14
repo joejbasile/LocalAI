@@ -17,25 +17,26 @@ read -r choice
 case $choice in
   ""|1)
     MODEL_FILE="qwen2.5-coder-7b-instruct-q5_k_m.gguf"
-    OLLAMA_MODEL="qwen-coder-agent-7b"
+    OLLAMA_MODEL="qwen2-5-coder-agent-7b"
     HF_REPO="Qwen/Qwen2.5-Coder-7B-Instruct-GGUF"
     HF_FILE_PATTERN="qwen2.5-coder-7b-instruct-q5_k_m.gguf"
     ;;
   2)
     MODEL_FILE="qwen2.5-coder-14b-instruct-q5_k_m.gguf"
-    OLLAMA_MODEL="qwen-coder-agent-14b"
+    OLLAMA_MODEL="qwen2-5-coder-agent-14b"
     HF_REPO="Qwen/Qwen2.5-Coder-14B-Instruct-GGUF"
-    HF_FILE_PATTERN="qwen2.5-coder-14b-instruct-q5_k_m*.gguf"
+    HF_FILE_PATTERN="qwen2.5-coder-14b-instruct-q5_k_m-0000*-of-*.gguf"
     ;;
   3)
     MODEL_FILE="Qwen3-Coder-30B-A3B-Instruct-UD-Q5_K_XL.gguf"
     OLLAMA_MODEL="qwen3-coder-agent-30b"
     HF_REPO="unsloth/Qwen3-Coder-30B-A3B-Instruct-GGUF"
-    HF_FILE_PATTERN="Qwen3-Coder-30B-A3B-Instruct-UD-Q5_K_XL*.gguf"
+    # Target split chunks if distributed in multi-part format
+    HF_FILE_PATTERN="Qwen3-Coder-30B-A3B-Instruct-UD-Q5_K_XL*-of-*.gguf"
     ;;
   4)
     MODEL_FILE="Qwythos-9B-v2-Q5_K_M.gguf"
-    OLLAMA_MODEL="qwythos-agent-9b"
+    OLLAMA_MODEL="qwythos-general-agent-9b"
     HF_REPO="empero-ai/Qwythos-9B-v2-GGUF"
     HF_FILE_PATTERN="*Q5_K_M*.gguf"
     ;;
@@ -46,43 +47,23 @@ case $choice in
 esac
 
 echo ""
-echo "--> Stripping potential Windows line endings from scripts..."
-if command -v sed >/dev/null 2>&1; then
-    sed -i 's/\r$//' scripts/*.sh 2>/dev/null || true
-fi
-
-echo ""
 echo "--> Selected GGUF: $MODEL_FILE"
 echo "--> Ollama model: $OLLAMA_MODEL"
 echo ""
 
-# Export everything for Docker Compose to pick up
+# Export variables for Docker Compose
 export MODEL_FILE
 export OLLAMA_MODEL
 export HF_REPO
 export HF_FILE_PATTERN
 
-echo "--> Starting Ollama..."
-docker compose up -d ollama
-
-echo "--> Waiting for Ollama health..."
-until docker exec ollama ollama list >/dev/null 2>&1
-do
-    sleep 5
-done
-
-echo "--> Building model..."
-docker compose --profile builder run --rm ollama-builder
-
-echo "--> Starting UI services..."
-docker compose up -d searxng open-webui
+echo "--> Launching cluster (Orchestrating model build dynamically)..."
+docker compose up -d
 
 echo ""
 echo "=========================================="
-echo " Stack Ready"
+echo " Stack Initialization Initiated"
 echo "=========================================="
-echo " Open WebUI:"
-echo " http://localhost:3000"
+echo " Monitor build status with: docker logs -f ollama-builder"
+echo " Open WebUI will be ready at: http://localhost:3000"
 echo ""
-echo " Model:"
-echo " $OLLAMA_MODEL"

@@ -1,5 +1,7 @@
 # Project README
 
+The intent of this project is to give the everyday user who does not have unlimited GPU processing power a good local AI setup with as few steps as possible.
+
 ## Prerequisites
 
 ### System Requirements
