@@ -5,6 +5,12 @@ Keep in mind these models do not have as many parameters as the big cloud models
 It is implied that general purpose agents should not be used for coding
 Smaller models may struggle with accuracy and hallucinations
 
+Current Models
+qwen2.5-coder-7b-instruct-q5_k_m
+qwen2.5-coder-14b-instruct-q5_k_m
+Qwen3-Coder-30B-A3B-Instruct-UD-Q5_K_XL
+Qwythos-9B-v2-Q5_K_M
+
 ## Prerequisites
 
 ### System Requirements
