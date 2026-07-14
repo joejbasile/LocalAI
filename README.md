@@ -4,11 +4,19 @@ The intent of this project is to give the everyday user who does not have unlimi
 Keep in mind these models do not have as many parameters as the big cloud models, be detailed and specific in your prompts.
 It is implied that general purpose agents should not be used for coding
 You may add you own model to the startup.sh file from hugging face as long as you follw the format. Simply list your model as a new choice and specify the agent name as either "coder" or "general"
+Smaller models may struggle with accuracy and hallucinations
+
+Current Models
+    qwen2.5-coder-7b-instruct-q5_k_m,
+    qwen2.5-coder-14b-instruct-q5_k_m,
+    Qwen3-Coder-30B-A3B-Instruct-UD-Q5_K_XL,
+    Qwythos-9B-v2-Q5_K_M,
+    Qwen3.6-35B-A3B-UD-Q5_K_XL
 
 ## Prerequisites
 
 ### System Requirements
-- 32, 24, 16 GB VRAM GPU depending on what model you want to run.
+- 32, 24, 16, 10, 8 GB VRAM GPU depending on what model you want to run.
 - Nvidia GPU
 - 16 GB DRAM + the amount of DRAM needed for the OS (Windows is usually about 8 GB, which would be 24 GB total).
 - 32 (or less depending on the model) GB of Storage

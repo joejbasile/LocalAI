@@ -3,13 +3,13 @@
 cd "$(dirname "$0")" || exit 1
 
 echo "=========================================="
-echo "   Select Coding Model to Initialize"
+echo "   Select Model to Initialize"
 echo "=========================================="
 echo "1) Qwen2.5-Coder 7B Q5_K_M (8+ GB VRAM)"
 echo "2) Qwen2.5-Coder 14B Q5_K_M (16+ GB VRAM)"
 echo "3) Qwen3-Coder 30B-A3B UD-Q5_K_XL (MoE) (32+ GB VRAM)"
 echo "4) Qwythos-9B-v2 Q5_K_M (General / Web Agent) (10+ GB VRAM)"
-echo "5) Qwen3.6-35B-A3B-UD-Q5_K_XL (General / Web Agent) (32+ GB VRAM)"
+echo "5) Qwen3.6 35B-A3B UD-Q5_K_XL (General / Web Agent) (32+ GB VRAM)"
 echo "------------------------------------------"
 
 printf "Enter choice as number [Default is 1] (1-3 are coding agents, 4 is a general purpose agent): "
